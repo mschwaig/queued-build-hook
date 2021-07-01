@@ -13,6 +13,34 @@
 
     packages."${system}".queued-build-hook = queued-build-hook;
 
+    nixosModule = { config, pkgs, lib, modulesPath, ... }: {
+      # TODO: allow only root user write to socket
+      # TODO: ensure only service can read from socket
+      # TODO: enable service confinment
+      # TODO: add configurable options (user should set hook)
+      # options = {};
+      config.systemd = {
+        sockets.queued-build-hook = {
+            description = "socket for root to enqueue built hooks that called asyncly by service";
+            wantedBy = [ "sockets.target" ];
+            before = [ "multi-user.target" ];
+            socketConfig.ListenStream = "/run/queued-build-hook.sock";
+        };
+
+        services.queued-build-hook = {
+          wantedBy = [ "multi-user.target" ];
+
+          serviceConfig = {
+            DynamicUser = true;
+            Type = "simple";
+            ExecStart = "${queued-build-hook}/bin/queued-build-hook daemon --hook ${./dummy-hook.sh}";
+          };
+
+   #       confinement.enable = true;
+        };
+      };
+    };
+
     defaultPackage."${system}" = self.packages."${system}".queued-build-hook;
   };
 }
