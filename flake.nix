@@ -17,7 +17,9 @@
       # TODO: allow only root user write to socket
       # TODO: ensure only service can read from socket
       # TODO: enable service confinment
-      # TODO: add configurable options (user should set hook)
+      # TODO: add configurable options
+      #       - service user should set hook
+      #       - service user should be able to pass secrets (signing key)?
       # options = {};
       config.systemd = {
         sockets.queued-build-hook = {
