@@ -27,6 +27,7 @@
             wantedBy = [ "sockets.target" ];
             before = [ "multi-user.target" ];
             socketConfig.ListenStream = "/run/queued-build-hook.sock";
+            #TODO: socketConfig.socketMode = "0600";
         };
 
         services.queued-build-hook = {
@@ -43,6 +44,14 @@
       };
     };
 
+    checks."${system}" = {
+      integration-tests = import ./vm-test.nix {
+        makeTest = import (nixpkgs + "/nixos/tests/make-test-python.nix");
+        inherit pkgs;
+        queued-build-hook-module = self.nixosModule;
+        queued-build-hook-binary-path = "${self.packages."${system}".queued-build-hook}/bin/queued-build-hook";
+      };
+    };
     defaultPackage."${system}" = self.packages."${system}".queued-build-hook;
   };
 }
