@@ -5,7 +5,6 @@
 # and
 # https://github.com/Mic92/cntr/blob/2a1dc7b2de304b42fe342e2f7edd1a8f8d4ab6db/vm-test.nix
 let
-  sensorProcessUser = "sensor";
   magicPackageName = "nae3ahMu";
 in
   makeTest {
@@ -30,7 +29,6 @@ in
 
           users = {
             root.password = "";
-            ${sensorProcessUser}.isSystemUser = true;
           };
         };
 
@@ -67,7 +65,6 @@ in
 
           users = {
             root.password = "";
-            ${sensorProcessUser}.isSystemUser = true;
           };
         };
       };

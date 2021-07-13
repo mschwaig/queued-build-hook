@@ -12,6 +12,7 @@
       exec ${self.packages.x86_64-linux.queued-build-hook}/bin/queued-build-hook queue --socket /run/queued-build-hook.sock
     '';
     dequeue-hook = ./dummy-hook.sh;
+    user = "queued-build-hook";
   in
   {
     devShell."${system}" = import ./shell.nix { inherit pkgs; };
@@ -25,7 +26,6 @@
     {
       # TODO: allow only root user write to socket
       # TODO: ensure only service can read from socket
-      # TODO: enable service confinment
       # TODO: add configurable options
       #       - service user should be able to pass secrets (signing key)?
       options.queued-build-hook = {
@@ -50,25 +50,29 @@
         };
       };
 
-      config.systemd = lib.mkIf cfg.enable {
-        sockets.queued-build-hook = {
-          description = "socket for root to enqueue built hooks that called asyncly by service";
-          wantedBy = [ "sockets.target" ];
-          before = [ "multi-user.target" ];
-          socketConfig.ListenStream = "/run/queued-build-hook.sock";
-          socketConfig.socketMode = "0600";
-        };
+      config = lib.mkIf cfg.enable {
+        users.users.${user}.isSystemUser = true;
 
-        services.queued-build-hook = {
-          wantedBy = [ "multi-user.target" ];
-
-          serviceConfig = {
-            DynamicUser = true;
-            Type = "simple";
-            ExecStart = "${queued-build-hook}/bin/queued-build-hook daemon --hook ${cfg.dequeue-hook}";
+        systemd = {
+          sockets.queued-build-hook = {
+            description = "socket for root to enqueue built hooks that called asyncly by service";
+            wantedBy = [ "sockets.target" ];
+            before = [ "multi-user.target" ];
+            socketConfig.ListenStream = "/run/queued-build-hook.sock";
+            socketConfig.socketMode = "0600";
           };
 
-   #       confinement.enable = true;
+          services.queued-build-hook = {
+            wantedBy = [ "multi-user.target" ];
+
+            serviceConfig = {
+              User = user;
+              Type = "simple";
+              ExecStart = "${queued-build-hook}/bin/queued-build-hook daemon --hook ${cfg.dequeue-hook}";
+            };
+
+            confinement.enable = true;
+          };
         };
       };
     };
