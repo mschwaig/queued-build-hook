@@ -58,8 +58,15 @@
             description = "socket for root to enqueue built hooks that called asyncly by service";
             wantedBy = [ "sockets.target" ];
             before = [ "multi-user.target" ];
-            socketConfig.ListenStream = "/run/queued-build-hook.sock";
-            socketConfig.socketMode = "0600";
+            socketConfig = {
+              ListenStream = "/run/queued-build-hook.sock";
+              SocketMode = "0600";
+              SocketUser = "root";
+              # accept must be false so (Accept=no)
+              # so that only one service unit
+              # is spawned for all connections
+              Accept = false;
+            };
           };
 
           services.queued-build-hook = {
