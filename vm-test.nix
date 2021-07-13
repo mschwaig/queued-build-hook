@@ -1,29 +1,29 @@
-{ pkgs, makeTest, queued-build-hook-module, queued-build-hook-binary-path, ... }:
+{ pkgs, makeTest, queued-build-hook-module, ... }:
 
 # this code is inspired by
 # https://www.haskellforall.com/2020/11/how-to-use-nixos-for-lightweight.html
 # and
 # https://github.com/Mic92/cntr/blob/2a1dc7b2de304b42fe342e2f7edd1a8f8d4ab6db/vm-test.nix
 let
-  piaPort = 8001;
-  sensorPort = 5002;
   sensorProcessUser = "sensor";
   magicPackageName = "nae3ahMu";
-  enqueue-hook = pkgs.writeScript "post-build-hook.sh" ''
-          #!${pkgs.runtimeShell}
-          exec ${queued-build-hook-binary-path} queue --socket /run/queued-build-hook.sock
-          '';
 in
   makeTest {
     name = "pia-registers-at-sensor-on-startup";
     system = "x86_64-linux";
 
     nodes = {
-      build = { config, pkgs, ... }: {
+      build = { config, pkgs, ... }:
+      let
+        dequeue-hook = ./test-hook.sh;
+      in {
 
         imports = [ queued-build-hook-module ];
 
-        networking.firewall.allowedTCPPorts = [ sensorPort ];
+        queued-build-hook = {
+          enable = true;
+          inherit dequeue-hook;
+        };
 
         users = {
           mutableUsers = false;
@@ -35,7 +35,7 @@ in
         };
 
         nix.extraOptions = ''
-          post-build-hook = ${enqueue-hook}
+          post-build-hook = ${config.queued-build-hook.enqueue-hook}
         '';
 
         environment.etc."build.nix" = {
@@ -62,8 +62,6 @@ in
 
         imports = [ queued-build-hook-module ];
 
-        networking.firewall.allowedTCPPorts = [ sensorPort ];
-
         users = {
           mutableUsers = false;
 
@@ -87,11 +85,8 @@ in
       build.fail("journalctl -u queued-build-hook.service | grep ${magicPackageName}")
       build.succeed("${pkgs.nix}/bin/nix-build --impure /etc/build.nix")
       build.succeed("journalctl -u queued-build-hook.service | grep ${magicPackageName}")
-
-      #pia.wait_for_unit("pia.service")
-      #pia.wait_for_open_port(${toString piaPort})
-
-      '';
+      build.succeed("journalctl -u queued-build-hook.service | grep Test.dequeue.hook")
+    '';
   } {
     inherit pkgs;
     inherit (pkgs) system;

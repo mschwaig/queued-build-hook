@@ -7,27 +7,56 @@
     pkgs = import nixpkgs { inherit system; };
     lib = pkgs.lib;
     queued-build-hook = import ./default.nix { inherit pkgs lib; };
+    enqueue-hook = pkgs.writeScript "post-build-hook-enqueue.sh" ''
+      #!${pkgs.runtimeShell}
+      exec ${self.packages.x86_64-linux.queued-build-hook}/bin/queued-build-hook queue --socket /run/queued-build-hook.sock
+    '';
+    dequeue-hook = ./dummy-hook.sh;
   in
   {
     devShell."${system}" = import ./shell.nix { inherit pkgs; };
 
     packages."${system}".queued-build-hook = queued-build-hook;
 
-    nixosModule = { config, pkgs, lib, modulesPath, ... }: {
+    nixosModule = { config, pkgs, lib, modulesPath, ... }:
+    let
+      cfg = config.queued-build-hook;
+    in
+    {
       # TODO: allow only root user write to socket
       # TODO: ensure only service can read from socket
       # TODO: enable service confinment
       # TODO: add configurable options
-      #       - service user should set hook
       #       - service user should be able to pass secrets (signing key)?
-      # options = {};
-      config.systemd = {
+      options.queued-build-hook = {
+        enable = lib.mkEnableOption "queued-build-hook service";
+        enqueue-hook = lib.mkOption {
+          type = lib.types.path;
+          default = enqueue-hook;
+          example = "You should usually not have to change this option.";
+          description = "The hook that you have to put into nix.extraOptions as a post-build-hook to perform the enqueue operation.";
+        };
+        dequeue-hook = lib.mkOption {
+          type = lib.types.path;
+          default = dequeue-hook;
+          example = "TODO";
+          description = "The actual hook that you want to execute asynchronously.";
+        };
+        queue-binary-path = lib.mkOption {
+          type = lib.types.path;
+          default = queued-build-hook/bin/queued-build-hook;
+          example = "You should usually not have to change this option.";
+          description = "TODO";
+        };
+      };
+
+      config.systemd = lib.mkIf cfg.enable {
         sockets.queued-build-hook = {
-            description = "socket for root to enqueue built hooks that called asyncly by service";
-            wantedBy = [ "sockets.target" ];
-            before = [ "multi-user.target" ];
-            socketConfig.ListenStream = "/run/queued-build-hook.sock";
-            #TODO: socketConfig.socketMode = "0600";
+          description = "socket for root to enqueue built hooks that called asyncly by service";
+          wantedBy = [ "sockets.target" ];
+          before = [ "multi-user.target" ];
+          socketConfig.ListenStream = "/run/queued-build-hook.sock";
+          socketConfig.socketMode = "0600";
         };
 
         services.queued-build-hook = {
@@ -36,7 +65,7 @@
           serviceConfig = {
             DynamicUser = true;
             Type = "simple";
-            ExecStart = "${queued-build-hook}/bin/queued-build-hook daemon --hook ${./dummy-hook.sh}";
+            ExecStart = "${queued-build-hook}/bin/queued-build-hook daemon --hook ${cfg.dequeue-hook}";
           };
 
    #       confinement.enable = true;
@@ -49,7 +78,6 @@
         makeTest = import (nixpkgs + "/nixos/tests/make-test-python.nix");
         inherit pkgs;
         queued-build-hook-module = self.nixosModule;
-        queued-build-hook-binary-path = "${self.packages."${system}".queued-build-hook}/bin/queued-build-hook";
       };
     };
     defaultPackage."${system}" = self.packages."${system}".queued-build-hook;
