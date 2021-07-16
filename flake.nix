@@ -51,7 +51,10 @@
       };
 
       config = lib.mkIf cfg.enable {
-        users.users.${user}.isSystemUser = true;
+        users.users.${user} = {
+          openssh.authorizedKeys.keyFiles = [ ./build_ssh_key.pub ];
+          isSystemUser = true;
+        };
 
         systemd = {
           sockets.queued-build-hook = {
@@ -77,8 +80,6 @@
               Type = "simple";
               ExecStart = "${queued-build-hook}/bin/queued-build-hook daemon --hook ${cfg.dequeue-hook}";
             };
-
-            confinement.enable = true;
           };
         };
       };

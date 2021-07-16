@@ -8,15 +8,24 @@ let
   magicPackageName = "nae3ahMu";
 in
   makeTest {
-    name = "pia-registers-at-sensor-on-startup";
+    name = "build-host-uploads-path-to-cache";
     system = "x86_64-linux";
 
     nodes = {
       build = { config, pkgs, ... }:
       let
-        dequeue-hook = ./test-hook.sh;
-      in {
+        dequeue-hook = pkgs.writeScript "ssh-copy-to-cache-hook.sh" ''
+          #!${pkgs.stdenv.shell}
+          set -eu
+          set -f # disable globbing
+          export IFS=' '
 
+          echo "Copying received paths" $OUT_PATHS
+          export NIX_SSHOPTS="-o StrictHostKeyChecking=accept-new -i $CREDENTIALS_DIRECTORY/build_host_ssh_key -v"
+          ${pkgs.nix}/bin/nix copy --to ssh://recv@cache $OUT_PATHS
+          echo "Done copying"
+        '';
+      in {
         imports = [ queued-build-hook-module ];
 
         queued-build-hook = {
@@ -35,6 +44,12 @@ in
         nix.extraOptions = ''
           post-build-hook = ${config.queued-build-hook.enqueue-hook}
         '';
+
+        systemd.services.queued-build-hook.path = [ pkgs.openssh pkgs.nix ];
+        systemd.services.queued-build-hook.serviceConfig = {
+          ReadOnlyBindPaths = "/etc/ssh";
+          LoadCredential = "build_host_ssh_key:/etc/build_host_ssh_key";
+        };
 
         environment.etc."build.nix" = {
           mode = "0555";
@@ -55,15 +70,32 @@ in
             echo foo > $out
           '';
         };
+
+        # this is a big issue
+        # the ssh key should not come from the store
+        # only done like this for the test
+        environment.etc."build_host_ssh_key" = {
+          mode = "0600";
+          source = ./build_host_ssh_key;
+        };
       };
       cache = { config, pkgs, ... }: {
 
-        imports = [ queued-build-hook-module ];
+        nix.trustedUsers = [ "root" "recv" ];
+
+        services.openssh = {
+          enable = true;
+          passwordAuthentication = false;
+        };
 
         users = {
           mutableUsers = false;
-
           users = {
+            recv = {
+              openssh.authorizedKeys.keyFiles = [ ./build_host_ssh_key.pub ];
+              isSystemUser = true;
+              shell = pkgs.bash;
+            };
             root.password = "";
           };
         };
@@ -74,15 +106,19 @@ in
       import signal
       # unhandeled signal will end test run
       # this terminates the test more quickly
-      signal.alarm(30)
+      signal.alarm(60)
 
       start_all()
 
       build.wait_for_unit("queued-build-hook.service")
+      build.wait_for_unit("multi-user.target")
+      cache.wait_for_unit("multi-user.target")
       build.fail("journalctl -u queued-build-hook.service | grep ${magicPackageName}")
       build.succeed("${pkgs.nix}/bin/nix-build --impure /etc/build.nix")
-      build.succeed("journalctl -u queued-build-hook.service | grep ${magicPackageName}")
-      build.succeed("journalctl -u queued-build-hook.service | grep Test.dequeue.hook")
+
+      build.wait_until_succeeds("journalctl -u queued-build-hook.service | grep ${magicPackageName}")
+      build.wait_until_succeeds("journalctl -u queued-build-hook.service | grep Done.copying")
+      cache.wait_until_succeeds("ls /nix/store | grep ${magicPackageName}")
     '';
   } {
     inherit pkgs;
