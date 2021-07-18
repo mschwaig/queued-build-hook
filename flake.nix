@@ -52,7 +52,6 @@
 
       config = lib.mkIf cfg.enable {
         users.users.${user} = {
-          openssh.authorizedKeys.keyFiles = [ ./build_ssh_key.pub ];
           isSystemUser = true;
         };
 
