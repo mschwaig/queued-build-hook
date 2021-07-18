@@ -47,7 +47,7 @@ in
 
         systemd.services.queued-build-hook.path = [ pkgs.openssh pkgs.nix ];
         systemd.services.queued-build-hook.serviceConfig = {
-          ReadOnlyBindPaths = "/etc/ssh";
+          BindReadOnlyPaths = "/etc/ssh";
           LoadCredential = "build_host_ssh_key:/etc/build_host_ssh_key";
         };
 
