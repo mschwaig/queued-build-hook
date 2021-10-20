@@ -53,6 +53,7 @@
       config = lib.mkIf cfg.enable {
         users.users.${user} = {
           isSystemUser = true;
+          group = user;
         };
 
         systemd = {
